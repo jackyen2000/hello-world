@@ -1,0 +1,245 @@
+rm(list=ls())
+### week 3 task is to use individual sequence and extract their features
+### bin = 6
+### Propensity Russel/Linding, Deleage/Roux, Top-IDP, dis-Prot
+### Pseudocount = 0.5
+### 5 groups - PEK, SQ, DGRC, ATHMN, WFYILV
+
+set1N.original <- read.table("/Users/chiyuyen/Desktop/guo_project/set1N_remove_profile.txt",header=T)
+set2P.original <- read.table("/Users/chiyuyen/Desktop/guo_project/set2P_remove_profile.txt",header=T)  
+
+
+### METHOD 1, get frequency (add pseudocount) and do a clustering
+
+#group amino acids according to
+#Li, T., Fan, K., Wang, J., & Wang, W. (2003). Reduction of protein sequence complexity by residue grouping. Protein Engineering, 16(5), 323–330. doi:10.1093/protein/gzg044
+#number groups = 7
+g1 <- c(5,14,19,18,13,11,10,20,8,15,1,17,16,3,9,6,7,4,2,12)
+n7 <- c(4,4,1,1,3,5,2)
+
+set1N.7 <- matrix(0,nrow=length(set1N.original[,1]),ncol=length(n7))
+set2P.7 <- matrix(0,nrow=length(set2P.original[,1]),ncol=length(n7))
+for(i in 1:length(n7)){
+	offset <- sum(n7[1:i])-n7[i]
+	for(j in 1:n7[i]){
+		set1N.7[,i] <- set1N.7[,i]+set1N.original[,g1[offset+j]]
+		set2P.7[,i] <- set2P.7[,i]+set2P.original[,g1[offset+j]]
+	}
+}
+
+#group amino acids according to 5 groups
+#5 groups - PEK, SQ, DGRC, ATHMN, WFYILV
+g2 <- c(15,6,12, 16,7, 4,8,2,5, 1,17,9,13,3, 18,14,19,10,11,20)
+n5 <- c(3,2,4,5,6)
+
+set1N.5 <- matrix(0,nrow=length(set1N.original[,1]),ncol=length(n5))
+set2P.5 <- matrix(0,nrow=length(set2P.original[,1]),ncol=length(n5))
+for(i in 1:length(n5)){
+	offset <- sum(n5[1:i])-n5[i]
+	for(j in 1:n5[i]){
+		set1N.5[,i] <- set1N.5[,i]+set1N.original[,g2[offset+j]]
+		set2P.5[,i] <- set2P.5[,i]+set2P.original[,g2[offset+j]]
+	}
+}
+
+
+
+### combind the 7 aa group an 5 propensity group sets + sequence length
+set1N.all <- cbind(set1N.7, set1N.5)
+set2P.all <- cbind(set2P.7, set2P.5)
+
+### add Pseudocount = 0.5 in count=0 cases to avoid low count problem because our sequence is short
+##set1N.5[set1N.5<1] <- 0.5
+set1N.all <- ifelse(set1N.all>=0,set1N.all+0.5,set1N.all)
+set2P.all <- ifelse(set2P.all>=0,set2P.all+0.5,set2P.all)
+
+### combined sets after adding pseudo count
+
+set1N.all
+set2P.all
+
+### calculate the length
+length1N.all <- rep(0:length(set1N.all[,1]))
+length2P.all <- rep(0:length(set2P.all[,1]))
+
+for (i in 1:length(set1N.all[,1])){
+	length1N.all[i] <- sum(set1N.all[i,])
+}
+for (i in 1:length(set2P.5[,1])){
+	length2P.all[i] <- sum(set2P.all[i,])
+}
+### total length of the two sets
+length1N.all
+length2P.all
+
+## make the data table as frequency matrix
+set1N.all.freq <- matrix(0,nrow=length(set1N.original[,1]),ncol=12)
+set2P.all.freq <- matrix(0,nrow=length(set2P.original[,1]),ncol=12)
+for(i in 1:length(set1N.all[,1])){
+	x <- set1N.all[i,]
+	t <- sum(x)
+	set1N.all.freq[i,] <- x/t
+}
+
+for(i in 1:length(set2P.all[,1])){
+	x <- set2P.all[i,]
+	t <- sum(x)
+	set2P.all.freq[i,] <- x/t
+}
+
+### count frequency of the two sets
+set1N.all.freq
+set2P.all.freq
+
+
+### add sequence length
+set1N.all.freq.length <- cbind(set1N.all.freq, set1N.original[,21])
+set2P.all.freq.length <- cbind(set2P.all.freq, set2P.original[,21])
+
+set1N.all.freq.length
+set2P.all.freq.length
+
+
+## all datas frequency - combined set1N and set2P all frequency into one matrix for PCA 
+x.all <- matrix(0,nrow=length(set1N.all[,1])+length(set2P.all[,1]),ncol=length(set1N.all.freq.length[1,]))
+for(i in 1:length(set1N.all.freq.length[,1])){
+	x.all[i,] <- set1N.all.freq.length[i,]
+}
+offset <- length(set1N.all.freq.length[,1])
+for(i in 1:length(set2P.all.freq.length[,1])){
+	x.all[offset+i,] <- set2P.all.freq.length[i,]
+}
+
+### perform PCA clustering
+data.pca <-prcomp(x.all)
+summary(data.pca)
+
+screeplot(data.pca, type="lines")
+
+plot(data.pca$x[,1],data.pca$x[,2], col=c("blue","green"), xlab=c("comp1"), ylab=c("comp2")) # make a scatterplot
+legend("topright", c("set1N","set2P"),fill=c("blue","green"))
+grid(NULL, NULL, lty=6, col="gray")
+
+text(data.pca$x[,1],data.pca$x[,2], cex=0.7, pos=4, col="red") # add labels
+
+
+### K-mean clustering
+k <- 2
+x <- x.all
+pc <- princomp(x)
+scores <- as.matrix(x) %*% as.matrix(pc$loadings)
+c <- kmeans(scores,k)
+col <- c()
+for(i in 1:length(scores[,1])){
+	if(c$cluster[i]==1){
+		col <- c(col,'blue')
+	}else if(c$cluster[i]==2){
+		col <- c(col,'green')
+	}else if(c$cluster[i]==3){
+		col <- c(col,'red')
+	}
+}
+colGroup <- c(rep('blue',length(set1N.all.freq[,1])),rep('green',length(set2P.all.freq[,1])))
+isSet2P <- c(rep(FALSE,length(set1N.all.freq[,1])),rep(TRUE,length(set2P.all.freq[,1])))
+
+
+par(mfrow=c(1,2))
+##plot(x[,c(2,11)],col=colGroup,xlab='Group 2: FYW', ylab='Sequence Length')
+plot(scores,col=col, main="Kmeans")
+plot(scores,col=colGroup, main="PCA")
+
+#text(x=scores[,1],y=scores[,2],label= x.original[,1],cex=0.5,pos=2,col=col)
+plot(pc$sdev/sum(pc$sdev))
+
+#plot PCA weights
+tmp <- pc$loadings[,1]
+plot(tmp,type='b',axes=F,frame.plot=T,main="PC1")
+axis(2)
+axis(1,labels=names(tmp),at=seq(1:length(tmp)),cex.axis=0.5,las=3)
+abline(h=mean(tmp))
+tmp <- pc$loadings[,2]
+plot(tmp,type='b',axes=F,frame.plot=T,main="PC2")
+axis(2)
+axis(1,labels=names(tmp),at=seq(1:length(tmp)),cex.axis=0.5,las=3)
+abline(h=mean(tmp))
+
+
+### kernal clustering
+library(kernlab)
+kernal <- kkmeans(x.all, center=2)
+
+#lda wo/PCA
+library(MASS)
+x.lda <- x.all
+isSet2P <- c(rep(FALSE,length(set1N.all.freq[,1])),rep(TRUE,length(set2P.all.freq[,1])))
+z <- lda(x.lda,grouping=isSet2P)
+prediction <- predict(z, x.lda)$class
+
+
+tab <- table(prediction,grouping=isSet2P)
+tp <- tab[2,2]
+fp <- tab[2,1]
+tn <- tab[1,1]
+fn <- tab[1,2]
+mcc <- (tp*tn-fp*fn)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+round(mcc,3)
+
+#lda w/PCA
+library(MASS)
+x <- x.all
+pc <- princomp(x)
+scores <- as.matrix(x) %*% as.matrix(pc$loadings)
+
+x.lda <- scores[,1:9]
+isSet2P <- c(rep(FALSE,length(set1N.all.freq[,1])),rep(TRUE,length(set2P.all.freq[,1])))
+z <- lda(x.lda,grouping=isSet2P)
+prediction <- predict(z, x.lda)$class
+
+
+colPrediction <- c(rep('blue',length(prediction)),rep('green',length(prediction)))
+plot(x.lda, col=prediction,main="PCA prediction")
+
+tab <- table(prediction,grouping=isSet2P)
+tp <- tab[2,2]
+fp <- tab[2,1]
+tn <- tab[1,1]
+fn <- tab[1,2]
+mcc <- (tp*tn-fp*fn)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+round(mcc,3)
+
+#SVM 
+library(e1071)
+##include length
+x.svm <- x.all[,1:13]
+## grouping
+isSet2P <- c(rep(0,length(set1N.all.freq[,1])),rep(1,length(set2P.all.freq[,1])))
+model <- svm(x.svm,grouping=isSet2P,kernal="polynomial",gamma="3",coef0="3",degress="3",cost=10)
+prediction <- predict(model, x.svm)
+
+tab <- table(prediction,grouping=isSet2P)
+tp <- tab[2,2] 
+fp <- tab[2,1]
+tn <- tab[1,1]
+fn <- tab[1,2]
+mcc <- (tp*tn-fp*fn)/sqrt((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))
+round(mcc,3)
+
+
+
+
+
+# data <- x.all[,1:12]
+# index <- 1:nrow(x.all)
+
+# testindex <- sample(index, trunc(length(index)/3))
+# testset <- x.all[testindex]
+# trainset<- x.all[-testindex]
+
+# svm.model <- svm(trainset,cost=100, gamma=1,grouping=isSet2P)
+# svm.prediction <- predict(svm.model, testset)
+# tab <- table(svm.prediction,grouping=isSet2P)
+
+# rpart.model <- rpart(Type~.,data=trainset)
+# rpart.pred  <- predict(rpart.model, testset[,10], type="class")
+
+# table(pred=rpart.pred, true=testset[,12])
